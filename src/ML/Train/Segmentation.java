@@ -6,6 +6,7 @@
 package ML.Train;
 
 import ML.Classify.Observation;
+import ML.featureDetection.Event;
 import ML.featureDetection.FindBeats;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -49,6 +50,12 @@ public class Segmentation {
                 break;
             }
 
+            ArrayList beats = norm.getProbableBeats();
+            if (beats.isEmpty()) {
+                System.out.println("segmentation: Beat is zero");
+                return;
+            }
+
             // This possible S1 event is situated between two S1 events in the 
             // ProbableBeats List,
             // We try to find which S1 is the closest.
@@ -68,21 +75,28 @@ public class Segmentation {
     private void segmentTheBeat(Iterator S1mb, FindBeats norm) {
         ArrayList mb = norm.getMoreBeats();
         ArrayList pb = norm.getProbableBeats();
-        Integer prevPB = null, nextPB = null;
+        Event prevPB = null, nextPB = null;
         int cnt = 1;
-        Integer S1MB = null;
+        Event S1MB = null;
         Observation eventHMM = null;
+        int averageDistance = -1;
 
-        int averageDistance = norm.getNormalizedData().length / norm.getProbableBeats().size();
+        ArrayList beats = norm.getProbableBeats();
+        if (beats.size() > 0) {
+            averageDistance = norm.getNormalizedData().length / beats.size();
+        } else {
+            return;
+        }
+
         Iterator iterPB = pb.iterator();
         // Get the first element of ProbableBeats, that arrives sooner than S1MB
         if (iterPB.hasNext()) {
-            prevPB = (Integer) iterPB.next();
+            prevPB = (Event) iterPB.next();
         }
         boolean flag = true;
         while (iterPB.hasNext()) {
             if (flag == true) {
-                nextPB = (Integer) iterPB.next();
+                nextPB = (Event) iterPB.next();
             } else {
                 // flag was found to be false, now make it true
                 flag = true;
@@ -90,8 +104,8 @@ public class Segmentation {
             // Analyse one beat to discern how many events there are inside
             // one event at a time
             while (S1mb.hasNext()) {
-                S1MB = (Integer) S1mb.next();
-                if (S1MB.intValue() > nextPB.intValue()) {
+                S1MB = (Event) S1mb.next();
+                if (S1MB.timeStampValue() > nextPB.timeStampValue()) {
                     prevPB = nextPB;
                     flag = true;
                     cnt = 1;
@@ -102,22 +116,22 @@ public class Segmentation {
                 // S2 in the second quarter, etc..
                 // Event suffix progresses
 
-                float un = averageDistance / (nextPB - prevPB);
+                float un = averageDistance / (nextPB.timeStampValue() - prevPB.timeStampValue());
 //                cnt = 1;
                 do {
-                    eventHMM = analalyse(prevPB, nextPB, S1MB, norm, cnt);
+                    eventHMM = analalyse(prevPB.timeStampValue(), nextPB.timeStampValue(), S1MB.timeStampValue(), norm, cnt);
                     if (eventHMM != null) {
                         addEvents(eventHMM);
-                        cnt++ ;
+                        cnt++;
                     } else {
                         // Nothing found in this PB event, go to the next
                         ;
                     }
-                    un = un - 1 ;
-                } while (un > 1.5) ;
-/*
+                    un = un - 1;
+                } while (un > 1.5);
+                /*
                 // S1MB = 1260, prevPB = 1280, nextPB = 3342
-*/                
+                 */
             }
         }
         return;
