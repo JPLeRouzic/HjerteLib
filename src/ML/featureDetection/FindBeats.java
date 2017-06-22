@@ -271,7 +271,7 @@ public class FindBeats {
             probableS1Beats = events;
             float tresholdS1 = (ave + (treshFnd * max)) / (treshFnd + 1);
             moreBeatEvents = findNextBeatEvents(dataIn, tresholdS1);
-            return candidateBeats;
+            return moreBeatEvents;
         }
         // Normally we should converge, if not then return last heart rate
         int un = preBeats.size() - prepreBeats.size();
@@ -283,7 +283,7 @@ public class FindBeats {
             float tresholdS1 = (ave + (treshFnd * max)) / (treshFnd + 1);
             if (probableS1Beats.size() > 0) {
                 moreBeatEvents = findNextBeatEvents(dataIn, tresholdS1);
-                return candidateBeats;
+                return moreBeatEvents;
             }
         } else {
             // Maybe the real heart wrong is wrong
