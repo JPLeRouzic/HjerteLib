@@ -30,7 +30,7 @@ public class FindBeats {
     private ArrayList moreBeatEvents;
 
     // S1 events as found in data flow, maybe wrong because of spikes
-    private ArrayList probableS1Beats;
+    ArrayList probableS1Beats;
 
     // Possibly S1 events
     private ArrayList candidateBeats;
@@ -48,22 +48,18 @@ public class FindBeats {
     // and helping in segmenting the heart sounds
     float treshFind;
 
-    // number of time a resample was needed
-    public int resampleCount;
-
-    // number of time a signal normalisation was needed
-    public int normalizeCount;
-
     // Used to do a rough evaluation of beat rate and treshold, before aiming at a more precise evaluation
     int RBF_Beats = 0;
     float RBF_treshhold = 0;
+    
+    // Evaluate is file is noisy
+    int noisyFile = 0 ;
+    private int eventShift;
 
     /**
      */
     public FindBeats() {
         treshFind = 0;
-        resampleCount = 0;
-        normalizeCount = 0;
 
         moreBeatEvents = new ArrayList();
         probableS1Beats = new ArrayList();
@@ -236,12 +232,10 @@ public class FindBeats {
             // Something wrong with dataIn, way too much events, so we filter it heavily
             Resample resp = new Resample();
             dataIn = resp.downSample(dataIn, sampling_rate, 1024);
-            resampleCount++;
         } else if (events.size() < (nbSecInFile / 3)) {
             // Something wrong with dataIn, not enough events, so we normalize dataIn
             NormalizeBeat nb = new NormalizeBeat();
             dataIn = nb.normalizeAmplitude(dataIn);
-            normalizeCount++;
         }
         return events;
     }
@@ -271,18 +265,23 @@ public class FindBeats {
             probableS1Beats = events;
             float tresholdS1 = (ave + (treshFnd * max)) / (treshFnd + 1);
             moreBeatEvents = findNextBeatEvents(dataIn, tresholdS1);
-            return moreBeatEvents;
+            noisyFile++ ;
+//            System.out.println("isRateAcceptable 0");
+            return probableS1Beats;
         }
         // Normally we should converge, if not then return last heart rate
         int un = preBeats.size() - prepreBeats.size();
         int deux = events.size() - preBeats.size();
         if ((un < deux) && (un > 0) && (deux > 0) && (preBeats.size() > 0)) {
-            // Find next sounds in this beat
+            /*        
+            * We probably rarely go through this branch
+            */
             normalizedData = dataIn;
             probableS1Beats = events;
             float tresholdS1 = (ave + (treshFnd * max)) / (treshFnd + 1);
             if (probableS1Beats.size() > 0) {
                 moreBeatEvents = findNextBeatEvents(dataIn, tresholdS1);
+//            System.out.println("isRateAcceptable 1");
                 return moreBeatEvents;
             }
         } else {
@@ -290,17 +289,16 @@ public class FindBeats {
             if ((events.size() == preBeats.size()) && (events.size() == prepreBeats.size())) {
                 candidateBeats = events;
                 // C'est un break ?????????????
-                return null;
+        // Something wrong in isRateAcceptable
+//            System.out.println("isRateAcceptable 2");
+        return null;
             }
             prepreBeats = preBeats;
             preBeats = events;
         }
-//        if ((nbEvents < (floor_high)) && (candidateBeats.size() < events.size())) {
         candidateBeats = events;
-//        } else if ((nbEvents > (ceiling_low)) && (candidateBeats.size() > events.size())) {
-//            candidateBeats = events;
-//        }
-//        System.out.println("Something wrong in isRateAcceptable");
+//            System.out.println("isRateAcceptable 3");
+            noisyFile++ ;
         return candidateBeats;
     }
 
@@ -345,6 +343,8 @@ public class FindBeats {
     ) {
         float ave, max;
         int idxGlobal;
+        int early = 0;
+        int late = 0;
         ArrayList BeatS1Rate = new ArrayList();
         boolean S1Flag = false;
         float tresholdS1;
@@ -384,25 +384,26 @@ public class FindBeats {
                 // Let's count a beat, and rise a flag to count only once downward
                 int un = BeatS1Rate.size();
                 if (un > 0) {
-                    diff = idxGlobal - ((Event) BeatS1Rate.get(un - 1)).timeStampValue();
+                    diff = idxGlobal - ((Event) BeatS1Rate.get(un - 1)).timeStampValue().intValue();
                 } else {
                     diff = earlyS1 + 1;
                 }
-
                 // Is it possibly too early?
                 if (diff < earlyS1) {
+                    early++ ;
                     idxGlobal++;
                     continue;
                 }
                 // Is it possibly too late?
                 if (diff > lateS1) {
+                    early-- ;
                     tresholdS1 = (float) ((double) tresholdS1 * 0.85D);
                     if (un > 1) {
-                        idxGlobal = ((Event) BeatS1Rate.get(un - 2)).timeStampValue();
+                        idxGlobal = ((Event) BeatS1Rate.get(un - 2)).timeStampValue().intValue();
                         continue;
                     }
                 }
-                Event event = new Event(idxGlobal, tresholdS1);
+                Event event = new Event(Integer.valueOf(idxGlobal), tresholdS1, early, late);
                 BeatS1Rate.add(event);
                 S1Flag = true;
 
@@ -411,6 +412,7 @@ public class FindBeats {
             }
             idxGlobal++;
         }
+        setShift(early) ;
         return BeatS1Rate;
     }
 
@@ -420,6 +422,10 @@ public class FindBeats {
 
     public ArrayList getProbableBeats() {
         return probableS1Beats;
+    }
+
+    public ArrayList getCandidateBeats() {
+        return candidateBeats;
     }
 
     public float[] getNormalizedData() {
@@ -541,7 +547,7 @@ public class FindBeats {
             while (idx < data.length) {
                 ave = lastWinAve(data, idx, winWidth);
                 if (ave > treshold) {
-                    binary.add(new Event(idx, treshold));
+                    binary.add(new Event(Integer.valueOf(idx), treshold, 0, 0));
 //                    System.out.println("betBeatSlice, idx= " + idx + ",    treshold= " + treshold);
                 }
                 idx += 30;
@@ -631,4 +637,18 @@ public class FindBeats {
         }
         return BeatS1Rate;
     }
+
+    public int getNoisyFile() {
+        float div = 4 * (moreBeatEvents.size() / probableS1Beats.size()) ;
+        return (int) ((4 * noisyFile) / div) ;
+    }
+    
+    public int getShift() {
+        return eventShift ;
+    }
+    
+    public void setShift(int shift) {
+        eventShift = shift ;
+    }
+    
 }
