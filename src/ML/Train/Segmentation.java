@@ -1,7 +1,11 @@
 /*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
+ * So we have here an approach which is very progressive, yet delivers results in a short time. It is also quite insensitive to sound events that could derail the heart beat counting, as the first step provide some good indications of the area where is the real heart beat, one spike makes the closer S1 perhaps not detected, but we gain a good idea of the heart duration.
+5) In addition to S1, many other events are detected. A priori we assume that these are the other events S2, S3, S4. Even numbers going higher than four, it is useful for unusual heart sound classification.
+6) These two Sx events detections are brought closer together
+6-1) The list of S1 events is made more reliable, which makes it possible to deduce the events S2, S3, S4 (Segmentation.java).
+6-2) A signature of the heart beat is computed to acknowledging there are more in one heart beat than its time of arrival and duration. We tested several schemes, and decided to use a Huffman compression of the heart beat. We had also the idea to use this to yet another kind of feature detection without training but it is not implemented at the moment because of lack of resources.
+7) From there one can either train a HMM, or classify. We go out of cardiac specific, it’s just an HMM
+8) One interprets the classification made by the HMM, with a score of similarity and comments on the events Sx
  */
 package ML.Train;
 
@@ -44,7 +48,6 @@ public class Segmentation {
         Integer S1MB, S1PB; */
 
         Iterator itrMB = norm.getMoreBeats().iterator();
-        label0:
         do {
             if (!itrMB.hasNext()) {
                 break;
@@ -82,8 +85,12 @@ public class Segmentation {
         int averageDistance = -1;
 
         ArrayList beats = norm.getProbableBeats();
-        if (beats.size() > 0) {
-            averageDistance = norm.getNormalizedData().length / beats.size();
+        
+        /* Take in account the "noisyness" of the file */
+        int beatsSize = beats.size() - norm.getNoisyFile();
+        System.out.println("Segmentation, corrected beat rate: " + beatsSize) ;
+        if (beatsSize > 0) {
+            averageDistance = norm.getNormalizedData().length / beatsSize;
         } else {
             return;
         }
@@ -105,7 +112,7 @@ public class Segmentation {
             // one event at a time
             while (S1mb.hasNext()) {
                 S1MB = (Event) S1mb.next();
-                if (S1MB.timeStampValue() > nextPB.timeStampValue()) {
+                if (S1MB.timeStampValue().intValue() > nextPB.timeStampValue().intValue()) {
                     prevPB = nextPB;
                     flag = true;
                     cnt = 1;
@@ -116,7 +123,7 @@ public class Segmentation {
                 // S2 in the second quarter, etc..
                 // Event suffix progresses
 
-                float un = averageDistance / (nextPB.timeStampValue() - prevPB.timeStampValue());
+                float un = averageDistance / (nextPB.timeStampValue().intValue() - prevPB.timeStampValue().intValue());
 //                cnt = 1;
                 do {
                     eventHMM = analalyse(prevPB.timeStampValue(), nextPB.timeStampValue(), S1MB.timeStampValue(), norm, cnt);
@@ -168,7 +175,9 @@ public class Segmentation {
         // For the HMM to separate the observations in more cases than S1-S4, we need to
         // add a "minor" numbering to the "Sx" string.
         // However it will be added later, to have a reasonnable amount of Observations
-        Observation obs = new Observation(pref, Sx, offsetRel, offsetAbs, efft);
+        Observation obs = new Observation(
+                pref, Sx, offsetRel, offsetAbs, efft, 
+                norm.getNoisyFile(), norm.getShift());
 
         return obs;
     }
