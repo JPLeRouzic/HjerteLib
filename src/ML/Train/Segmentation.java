@@ -128,8 +128,16 @@ public class Segmentation {
                 do {
                     eventHMM = analalyse(prevPB.timeStampValue(), nextPB.timeStampValue(), S1MB.timeStampValue(), norm, cnt);
                     if (eventHMM != null) {
+                        if(cnt < 5) {
                         addEvents(eventHMM);
                         cnt++;
+                        }
+                        else {
+                            // Mark last event as noisy
+                            int inddx = segmentedBeats.size() - 1;
+                            Observation lastS4Event = (Observation) segmentedBeats.get(inddx);
+                            lastS4Event.addManyEvents(1); ;
+                        }
                     } else {
                         // Nothing found in this PB event, go to the next
                         ;
@@ -152,7 +160,7 @@ public class Segmentation {
         return segmentedBeats;
     }
 
-    private Observation makeHMMObs(String pref, int Sx, int S1base, int S1next, FindBeats norm) {
+    private Observation makeHMMObs(String pref, String sufx, int Sx, int S1base, int S1next, FindBeats norm) {
         // make a string for the relative position of the event in the beat
         // Obtain a FFT of the time between S1base and Sx and make a string of it
         // First get the sample between S1base and Sx
@@ -176,8 +184,8 @@ public class Segmentation {
         // add a "minor" numbering to the "Sx" string.
         // However it will be added later, to have a reasonnable amount of Observations
         Observation obs = new Observation(
-                pref, Sx, offsetRel, offsetAbs, efft, 
-                norm.getNoisyFile(), norm.getShift());
+                pref, sufx, Sx, offsetRel, offsetAbs, efft, 
+                norm.getNoisyFile(), norm.getShift(), 0);
 
         return obs;
     }
@@ -193,7 +201,7 @@ public class Segmentation {
 
         if ((S1MB.intValue() > prev.intValue()) && (S1MB.intValue() < next.intValue())) {
             eventName = "S" + String.valueOf(cnt);
-            Observation eventHMM = makeHMMObs(eventName, S1MB.intValue(), prev.intValue(), next.intValue(), norm);
+            Observation eventHMM = makeHMMObs(eventName, "", S1MB.intValue(), prev.intValue(), next.intValue(), norm);
             if (eventHMM == null) {
                 return null; // continue
             } else {
