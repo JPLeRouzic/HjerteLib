@@ -38,7 +38,6 @@ public class Segmentation {
      *
      * @param norm
      * @param rate
-     * @return
      */
     public void segmentation(FindBeats norm, int rate) {
         /*        int S1 = 0;
@@ -48,47 +47,42 @@ public class Segmentation {
         Integer S1MB, S1PB; */
 
         Iterator itrMB = norm.getMoreBeats().iterator();
-        do {
-            if (!itrMB.hasNext()) {
-                break;
-            }
+        boolean ii = itrMB.hasNext();
+        if (!ii) {
+            return;
+        }
 
-            ArrayList beats = norm.getProbableBeats();
-            if (beats.isEmpty()) {
-                System.out.println("segmentation: Beat is zero");
-                return;
-            }
+        // This possible S1 event is situated between two S1 events in the 
+        // ProbableBeats List,
+        // We try to find which S1 is the closest.
+        segmentBeats(itrMB, norm);
 
-            // This possible S1 event is situated between two S1 events in the 
-            // ProbableBeats List,
-            // We try to find which S1 is the closest.
-            segmentTheBeat(itrMB, norm);
-
-        } while (true);
-        return;
     }
 
     /**
      * This possible S1 event is situated between two S1 events in the
      * ProbableBeats List, We try to find which S1 is the closest.
      *
-     * @param S1mb
+     * @param itrMB
      * @param norm
      */
-    private void segmentTheBeat(Iterator S1mb, FindBeats norm) {
+    private void segmentBeats(Iterator itrMB, FindBeats norm) {
         ArrayList mb = norm.getMoreBeats();
         ArrayList pb = norm.getProbableBeats();
         Event prevPB = null, nextPB = null;
         int cnt = 1;
         Event S1MB = null;
         Observation eventHMM = null;
-        int averageDistance = -1;
+        int averageDistance;
 
         ArrayList beats = norm.getProbableBeats();
-        
+
         /* Take in account the "noisyness" of the file */
         int beatsSize = beats.size() - norm.getNoisyFile();
-        System.out.println("Segmentation, corrected beat rate: " + beatsSize) ;
+        System.out.println("Segmentation, corrected beat rate: " + beatsSize + 
+                " shift: " + norm.getShift() +
+                " treshold: " + norm.getTreshHold()
+                );
         if (beatsSize > 0) {
             averageDistance = norm.getNormalizedData().length / beatsSize;
         } else {
@@ -102,54 +96,11 @@ public class Segmentation {
         }
         boolean flag = true;
         while (iterPB.hasNext()) {
-            if (flag == true) {
-                nextPB = (Event) iterPB.next();
-            } else {
-                // flag was found to be false, now make it true
-                flag = true;
-            }
-            // Analyse one beat to discern how many events there are inside
-            // one event at a time
-            while (S1mb.hasNext()) {
-                S1MB = (Event) S1mb.next();
-                if (S1MB.timeStampValue().intValue() > nextPB.timeStampValue().intValue()) {
-                    prevPB = nextPB;
-                    flag = true;
-                    cnt = 1;
-                    // Nothing found in this PB event, go to the next
-                    break;
-                }
-                // S1 appears in the first quarter of the heartbeat
-                // S2 in the second quarter, etc..
-                // Event suffix progresses
-
-                float un = averageDistance / (nextPB.timeStampValue().intValue() - prevPB.timeStampValue().intValue());
-//                cnt = 1;
-                do {
-                    eventHMM = analalyse(prevPB.timeStampValue(), nextPB.timeStampValue(), S1MB.timeStampValue(), norm, cnt);
-                    if (eventHMM != null) {
-                        if(cnt < 5) {
-                        addEvents(eventHMM);
-                        cnt++;
-                        }
-                        else {
-                            // Mark last event as noisy
-                            int inddx = segmentedBeats.size() - 1;
-                            Observation lastS4Event = (Observation) segmentedBeats.get(inddx);
-                            lastS4Event.addManyEvents(1); ;
-                        }
-                    } else {
-                        // Nothing found in this PB event, go to the next
-                        ;
-                    }
-                    un = un - 1;
-                } while (un > 1.5);
-                /*
-                // S1MB = 1260, prevPB = 1280, nextPB = 3342
-                 */
-            }
+            procEvent(prevPB, nextPB, S1MB, cnt,
+                    eventHMM, norm, flag,
+                    iterPB, itrMB,
+                    averageDistance);
         }
-        return;
     }
 
     public void addEvents(Observation eventHMM) {
@@ -184,7 +135,7 @@ public class Segmentation {
         // add a "minor" numbering to the "Sx" string.
         // However it will be added later, to have a reasonnable amount of Observations
         Observation obs = new Observation(
-                pref, sufx, Sx, offsetRel, offsetAbs, efft, 
+                pref, sufx, Sx, offsetRel, offsetAbs, efft,
                 norm.getNoisyFile(), norm.getShift(), 0);
 
         return obs;
@@ -209,5 +160,79 @@ public class Segmentation {
             }
         }
         return null; // not continue
+    }
+
+    public float getS1Timing(int inBeat) {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    public float getS2Timing(int inBeat) {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    public float getS3Timing(int inBeat) {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    public float getS4Timing(int inBeat) {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    private int analyseEvent(Event prevPB, Event nextPB, Event S1MB, int cnt,
+            Observation eventHMM, FindBeats norm) {
+        eventHMM = analalyse(prevPB.timeStampValue(), nextPB.timeStampValue(),
+                S1MB.timeStampValue(), norm, cnt);
+        if (eventHMM != null) {
+            if (cnt < 5) {
+                addEvents(eventHMM);
+                cnt++;
+            } else {
+                // Mark last event as noisy
+                int inddx = segmentedBeats.size() - 1;
+                Observation lastS4Event = (Observation) segmentedBeats.get(inddx);
+                lastS4Event.addManyEvents(1);
+            }
+        } else {
+            // Nothing found in this PB event, go to the next
+            ;
+        }
+        return cnt;
+    }
+
+    private void procEvent(Event prevPB, Event nextPB, Event S1MB, int cnt,
+            Observation eventHMM, FindBeats norm, boolean flag,
+            Iterator iterPB, Iterator itrMB,
+            int averageDistance) {
+        if (flag == true) {
+            nextPB = (Event) iterPB.next();
+        } else {
+            // flag was found to be false, now make it true
+            flag = true;
+        }
+        // Analyse one beat to discern how many events there are inside
+        // one event at a time
+        while (itrMB.hasNext()) {
+            S1MB = (Event) itrMB.next();
+            if (S1MB.timeStampValue().intValue() > nextPB.timeStampValue().intValue()) {
+                prevPB = nextPB;
+                flag = true;
+                cnt = 1;
+                // Nothing found in this PB event, go to the next
+                break;
+            }
+            // S1 appears in the first quarter of the heartbeat
+            // S2 in the second quarter, etc..
+            // Event suffix progresses
+
+            float un = averageDistance / (nextPB.timeStampValue().intValue() - prevPB.timeStampValue().intValue());
+//                cnt = 1;
+            do {
+                cnt = analyseEvent(prevPB, nextPB, S1MB, cnt, eventHMM, norm);
+                un = un - 1;
+            } while (un > 1.5);
+            /*
+                // S1MB = 1260, prevPB = 1280, nextPB = 3342
+             */
+        }
     }
 }

@@ -1,4 +1,3 @@
-
 package ML.Train;
 
 import ML.Classify.*;
@@ -6,10 +5,8 @@ import java.util.*;
 
 // Referenced classes of package ML.Train:
 //            HMMutilities, Trainer
+public class HMM {
 
-public class HMM
-{
-    HMMutilities goglHMMU ;
     /**
      * The times (S1, sys, S2, dia) will be our HMM states, and we must give an
      * observation matrix as input to the training, The result of training
@@ -17,11 +14,11 @@ public class HMM
      *
      */
     Observations obs;
-    
+
     public String mostFreqState;
-    
+
     public HashMap observationCounts;           // HashMap<String, HashMap<Observation, Integer>>
-    
+
     // This is the most important item in this class
     // It gives the probability of transition from one state to the next
     // for each next step
@@ -33,17 +30,16 @@ public class HMM
 
     public HashMap hidnStatesCounts;            // HashMap<String, Integer>
     public HashMap stateForObservationCounts;   // HashMap<Observation, HashMap<String state, Integer>>
-    
+
     Integer mostFreqStateCount;
     int numTrainingBigrams;
-    
+
     private float similarity;
-    
+
     public ArrayList worksWell;
     ArrayList worksBadly;
 
-    public HMM(ArrayList obb)
-    {
+    public HMM(ArrayList obb) {
         obs = null;
         mostFreqState = null;
         observationCounts = new HashMap();
@@ -51,71 +47,62 @@ public class HMM
         transitionsProbs = new HashMap();
         hidnStatesCounts = new HashMap();
         stateForObservationCounts = new HashMap();
-        mostFreqStateCount = new Integer(0) ;
+        mostFreqStateCount = new Integer(0);
         obs = new Observations(obb);
-        
+
         worksWell = new ArrayList();
         worksBadly = new ArrayList();
-        
-        goglHMMU = new HMMutilities(obb) ;
     }
 
-    public void train()
-    {
+    public void train() {
         String prevState = null;
         Observation currentObservation = null;
-        Trainer trn = new Trainer();
-        prevState = obs.currentStateTag();
-        obs.gotoNextObservation();
-        while(obs.hasNext()) 
-        {
-            String currentState = obs.currentStateTag();
-            currentObservation = obs.currentObservation();
-            obs.incPtr();
+        final Trainer trn = new Trainer();
+        prevState = this.obs.currentStateTag();
+        this.obs.gotoNextObservation();
+        while (this.obs.hasNext()) {
+            final String currentState = this.obs.currentStateTag();
+            currentObservation = this.obs.currentObservation();
+            this.obs.incPtr();
             prevState = trn.parseTrainer(this, prevState, currentState, currentObservation);
         }
     }
 
     /**
-     * The class initialization has read observation 
-     * This method sends them in a list
+     * The class initialization has read observation This method sends them in a
+     * list
      *
      * @return
      */
-    public ArrayList getObsrvSeq()
-    {
-        obs.resetPtr() ;
+    public ArrayList getObsrvSeq() {
         ArrayList list = new ArrayList();
-        for(; obs.hasNext(); list.add(obs.currentObservation())) {
+        for (; obs.hasNext(); list.add(obs.currentObservation())) {
             obs.gotoNextObservation();
         }
-
         return list;
     }
 
     /*
      * Calculates probability of (State|Observation), that this state corresponds to that Observation
      */
-    public float calcLikelihood(String state, Observation word)
-    {
+    public float calcLikelihood(String state, Observation word) {
         int vocabSize = stateForObservationCounts.keySet().size();
         int deux;
         float trois;
-        deux = goglHMMU.countsObsrv(observationCounts, state, word) + 1 ;
-        trois = (float)(goglHMMU.countStates(hidnStatesCounts, state) + vocabSize);
-        float un = deux / trois ;
+        deux = (HMMutilities.countsObsrv(observationCounts, state, word) + 1);
+        trois = (float) (HMMutilities.countStates(hidnStatesCounts, state) + vocabSize);
+        float un = deux / trois;
         return (float) un;
     }
 
     /*
      * Calculates probability of (State1|State2), of transition from state1 to state2
      */
-    public float calcPriorProbState(String state1, String state2)
-    {
+    public float calcPriorProbState(String state1, String state2) {
         int vocabSize = hidnStatesCounts.keySet().size();
-        float deux = (float)(goglHMMU.countsStates(transitionsProbs, state1, state2) + 1);
-        float trois = (float)(goglHMMU.countStates(hidnStatesCounts, state1) + vocabSize);
-        return deux / trois ;
+        float deux = (float) (HMMutilities.countsStates(transitionsProbs, state1, state2) + 1);
+        float trois = (float) (HMMutilities.countStates(hidnStatesCounts, state1) + vocabSize);
+        return deux / trois;
     }
 
     /* 
@@ -127,34 +114,32 @@ public class HMM
      *                     state observation likelihood )
      *                     
      */
-    public Node calcNode(Observation word, String state, HashMap prevMap)
-    {
+    public Node calcNode(Observation word, String state, HashMap prevMap) {
         Node n = new Node(word, state);
         float maxProb = 0.0F;
         Iterator iterator = prevMap.keySet().iterator();
-        do
-        {
-            if(!iterator.hasNext())
+        do {
+            if (!iterator.hasNext()) {
                 break;
-            String prevTag = (String)iterator.next();
-            Node prevNode = (Node)prevMap.get(prevTag);
+            }
+            String prevTag = (String) iterator.next();
+            Node prevNode = (Node) prevMap.get(prevTag);
             float prevProb = prevNode.probability;
-            prevProb *= calcPriorProbState(prevTag, state);
-            if(prevProb >= maxProb)
-            {
+            prevProb *= this.calcPriorProbState(prevTag, state);
+            if (prevProb >= maxProb) {
                 maxProb = prevProb;
                 n.parent = prevNode;
             }
-        } while(true);
+        } while (true);
         n.probability = maxProb * calcLikelihood(state, word);
         return n;
     }
 
-    public void setSimilarity(float simil) {
-        similarity = simil ;
+    public void setSimilarity(final float simil) {
+        this.similarity = simil;
     }
 
     public String getSimilarity() {
-        return String.valueOf(similarity) ;
+        return String.valueOf(this.similarity);
     }
 }
