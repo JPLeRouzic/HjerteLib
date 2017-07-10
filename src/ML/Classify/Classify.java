@@ -1,24 +1,49 @@
 package ML.Classify;
 
+import Misc.Gui.Main.EntryPoint;
+import Misc.Gui.Main.OuterFrame;
+import Misc.AudioFeatures.RecordingInfo;
 import ML.Train.HMM;
 import ML.Train.Segmentation;
 import ML.featureDetection.FindBeats;
 import ML.featureDetection.NormalizeBeat;
-import Misc.Main.EntryPoint;
-import Misc.sampled.AudioSamples;
+import Misc.AudioFeatures.FromFileToAudio;
+import Misc.Gui.Controller.Control;
+import java.io.File;
 import java.util.ArrayList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.swing.JOptionPane;
 
 public class Classify {
+    
+    float similarity ;
+    public FindBeats cb ;
+    public Segmentation segmt  ;
+    public FromFileToAudio e = null;
 
-    Segmentation segmt;
-    float similarity;
-    EntryPoint goglEP = new EntryPoint() ;
-
-    public Classify(AudioSamples audio_data) {
+    public Classify(Control controller, OuterFrame outer_frame, RecordingInfo info[]) {
         ArrayList beats = null;
+        RecordingInfo recordings[] = info;
+        if (recordings == null) {
+            String message = "No recordings available to extract features from.";
+            JOptionPane.showConfirmDialog(null, message, "WARNING", 0);
+        }
+        if (recordings.length > 1) {
+            String message = "No more than one recording for classifying.";
+            JOptionPane.showConfirmDialog(null, message, "WARNING", 0);
+        }
 
-        float samples[] = audio_data.getSamplesMixedDown();
-        int smplingRate = (int) audio_data.getSamplingRate();
+        File load_file = new File(recordings[0].file_path);
+        
+        try {
+            e = new FromFileToAudio(
+                    load_file);
+        } catch (Exception ex) {
+            Logger.getLogger(Classify.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        float samples[] = e.getAudioSamples().getSamplesMixedDown();
+        int smplingRate = (int) e.getAudioSamples().getSamplingRate();
 
         int heart_rate = 60;
 
@@ -30,10 +55,10 @@ public class Classify {
 
         float[] data_norm = norm.normalizeAmplitude(samples);
 
-        FindBeats cb = new FindBeats();
+        cb = new FindBeats();
 
         // calculate beat rate
-        cb.calcBeat1(data_norm, smplingRate, heart_rate);
+        cb.calcBeat(data_norm, smplingRate, heart_rate);
 
         // calculate beat rate
         beats = cb.getProbableBeats();
@@ -70,16 +95,16 @@ public class Classify {
             int deux = (int) (size % 20);
             String suffix = String.valueOf(deux);
             obs.setNameSufx(suffix);
-            obsList.add(obs);
+            obsList.add(obs) ;
         }
 
-        goglEP.hmmTest = new HMM(obsList);
-        goglEP.hmmTest.train();
+            EntryPoint.hmmTest = new HMM(obsList);
+            EntryPoint.hmmTest.train(); 
 
-        Viterbi vt = new Viterbi();
+            Viterbi vt = new Viterbi();
 
-        similarity = vt.viterbi();
-        goglEP.hmmTest.setSimilarity(similarity);
+            similarity = vt.viterbi();
+            EntryPoint.hmmTest.setSimilarity(similarity) ;
 
     }
 }
