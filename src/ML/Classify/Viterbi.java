@@ -1,7 +1,6 @@
 package ML.Classify;
 
-import Misc.Main.EntryPoint;
-import java.util.ArrayList;
+import Misc.Gui.Main.EntryPoint;
 import java.util.Collection;
 import java.util.Set;
 
@@ -15,13 +14,11 @@ import java.util.Set;
  * @author jplr
  */
 public class Viterbi {
-    
-    EntryPoint goglEP = new EntryPoint() ;
 
     /**
      * We look at each hidden state in hmmTest to find if it also belongs to
      * hmmTrain - If it does not, go to next hidden state (except if it is the
-     * last one) - If it belongs to hmmTrain, then compare the next observations
+     * last one) - It it belongs to hmmTrain, then compare the next observations
      * in both HMMs report a hidden state similarity (a percentage) based on the
      * number of correlations, starting from the root hidden state When all
      * hidden states have been processed, add all hidden state similarity scores
@@ -34,14 +31,14 @@ public class Viterbi {
         float globalScore = 0, similarity = 0;
 
         // get the keys and values of the training HMM
-        Collection valuesTrain = goglEP.hmmTrain.transitionsProbs.values();
-        Set keysTrain = goglEP.hmmTrain.transitionsProbs.keySet();
+        Collection valuesTrain = EntryPoint.hmmTrain.transitionsProbs.values();
+        Set keysTrain = EntryPoint.hmmTrain.transitionsProbs.keySet();
         Object[] valuesTrainArray = valuesTrain.toArray();
         Object[] valuesTrainKeys = keysTrain.toArray();
 
         // get the keys and values of the test HMM
-        Collection valuesTest = goglEP.hmmTest.transitionsProbs.values();
-        Set keysTest = goglEP.hmmTest.transitionsProbs.keySet();
+        Collection valuesTest = EntryPoint.hmmTest.transitionsProbs.values();
+        Set keysTest = EntryPoint.hmmTest.transitionsProbs.keySet();
         Object[] valuesTestArray = valuesTest.toArray();
         Object[] valuesTestKeys = keysTest.toArray();
 
@@ -106,7 +103,6 @@ public class Viterbi {
 //                    System.out.println("3, tokensTest: " + tokensTest[idxtst] + "  tokensTrain: " + tokensTrain[idxtrn]);
                         if (tokensTest[idxtst].trim().contentEquals(tokensTrain[idxtrn].trim())) {
 //                        System.out.println("4: tokensTest (" + tokensTest[idxtst].trim() + ") is equal to tokensTrain (" + tokensTrain[idxtrn].trim() + ")");
-                            goglEP.hmmTest.worksWell.add(tokensTest[idxtst].trim()) ;
                             similarity++;
                             // Now find next tokensTest
                             break ;
