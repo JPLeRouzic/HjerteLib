@@ -51,10 +51,12 @@ public class FindBeats {
     // Used to do a rough evaluation of beat rate and treshold, before aiming at a more precise evaluation
     int RBF_Beats = 0;
     float RBF_treshhold = 0;
-    
+
     // Evaluate is file is noisy
-    int noisyFile = 0 ;
+    int noisyFile = 0;
     private int eventShift;
+    private boolean randm = false ;
+
 
     /**
      */
@@ -66,6 +68,11 @@ public class FindBeats {
         candidateBeats = new ArrayList();
     }
 
+    /**
+     * Find average in data
+     *
+     * @param data
+     */
     private void averMax(float[] data) {
         float absData;
         int idx = 0;
@@ -92,28 +99,33 @@ public class FindBeats {
     }
 
     /**
-     * Loop varying the guessed heart rate, till some significant value rises at
-     * least more Sx events than there are S1 events
+     * Loop varying the guessed heart rate, till some significant value rises:
+     * At least more Sx events than there are S1 events
      *
      * @param data_norm
      * @param smplingRate
      * @param heart_rate
      */
     public void calcBeat(float[] data_norm, int smplingRate, int heart_rate) {
-        int beats = heart_rate;
+    int beats = heart_rate;
         int lastBeats;
         int nbEssai = 1;
+        boolean rndm = false ;
         do {
             lastBeats = moreBeatEvents.size();
             calcBeatTreshold(data_norm, smplingRate, beats);
+            // the beats found are at random, which is unlikely
+            // calcBeatTreshold restored the previous value, which is likely the best we ould found
+            if(randm == true) {
+                break ;
+            }
             beats = (int) (beats * 1.5);
             nbEssai++;
         } while ((moreBeatEvents.size() > lastBeats) && (nbEssai < 4) && (probableS1Beats.size() > (heart_rate * 0.7)));
     }
 
     /**
-     * Evaluate a treshold and loop through it (in calcBeat2) until a good match
-     * is met then find more heart sound events in the beats
+     * Try to identity S1 sound in one beat, then find more heart sounds
      *
      * @param data
      * @param sampling_rate
@@ -144,20 +156,25 @@ public class FindBeats {
 
         // Rough evaluation of treshold, if beat rate not provided in advance
         if (beatSec == 0) {
-            roughTreshFind(dataIn, earlyS1, lateS1, s2Shift, ave, max, nbSecInFile);
+            roughTreshFind(dataIn, sampling_rate, earlyS1, lateS1, s2Shift, ave, max, nbSecInFile);
             beatSec = RBF_Beats;
             treshFind = RBF_treshhold;
         }
 
         /* It uses the global value of treshFind */
-        probableS1Beats = calcBeat2(dataIn, sampling_rate, beatSec, earlyS1, lateS1, s2Shift, ave, max, nbSecInFile);
+        probableS1Beats = calcBeat2(
+                dataIn, sampling_rate, 
+                beatSec, earlyS1, lateS1, s2Shift, 
+                ave, max, 
+                nbSecInFile);
 
-        // Find next sounds in this beat
+        // Save data that was normalized in inner loops
         normalizedData = dataIn;
 
+        // Find next sounds in this beat
         float tresholdS1 = (ave + (2 * max)) / (2 + 1);
         if (probableS1Beats.size() > 0) {
-            moreBeatEvents = betBeatSlice(dataIn, tresholdS1, probableS1Beats.size() * 4);
+            moreBeatEvents = findNextSounds(dataIn, tresholdS1, probableS1Beats.size() * 4);
         }
     }
 
@@ -173,13 +190,31 @@ public class FindBeats {
             float earlyS1, float lateS1, float s2Shift,
             float ave, float max, float nbSecInFile) {
         ArrayList events;
+        ArrayList lastEvents = null;
+        int lastEventsSize = 0;
         do {
             events = calcRateRuleOfThumb(
                     data, sampling_rate, beatSec, earlyS1, lateS1, s2Shift, ave,
                     max, nbSecInFile, treshFind);
             if (events == null) {
-                System.out.println("null in calcBeat2");;
+                System.out.println("null in calcBeat2");
             }
+
+            // Leave the loop if less events are detected than previously
+            if (events.size() < lastEventsSize) {
+                return events;
+            }
+
+            /* If events have some randomness, it means noise is detected
+             */
+            detectRandomness(events);
+            if ((randm == true) && (events.size() > (beatSec * 0.666))) {
+                return lastEvents;
+            }
+
+            // store it for later reference
+            lastEvents = (ArrayList) events.clone();
+
             // Finer grain as tresholdS1 becomes only slightly higher than average
             if (treshFind > 1) {
                 treshFind -= 0.5;
@@ -187,7 +222,45 @@ public class FindBeats {
                 treshFind -= 0.125;
             }
         } while (treshFind > 0.05);
+
+        // If we breat out the loop, we must return the events list
         return events;
+    }
+
+    private void detectRandomness(ArrayList events) {
+        int tot = 0;
+        float lastMin = 999999999;
+        float min = 0;
+        float lastMax = 0;
+        float max = 0;
+        int timeStamp = -1;
+
+        if (events.size() == 0) {
+            randm = false;
+            return ;
+        }
+        for (int idx = 0; idx < events.size(); idx++) {
+            timeStamp = ((Event) events.get(idx)).timeStampValue().intValue();
+            min = timeStamp;
+            if (min < lastMin) {
+                lastMin = min;
+            }
+            max = timeStamp;
+            if (max > lastMax) {
+                lastMax = max;
+            }
+
+            tot += timeStamp;
+        }
+        int ave = tot / events.size();
+        float tresh = (lastMax - lastMin) / (ave);
+
+        // hardwired constant
+        if ((tresh) > 2.2) {
+            randm = true;
+        } else {
+            randm = false;
+        }
     }
 
     /**
@@ -213,7 +286,7 @@ public class FindBeats {
             float treshFnd
     ) {
 
-        ArrayList events = calcBeatFind(dataIn, earlyS1, lateS1, s2Shift, treshFnd);
+        ArrayList events = calcBeatFind(dataIn, sampling_rate, earlyS1, lateS1, s2Shift, treshFnd);
 
         // Number of events per minute
         int nbEvents = (int) ((events.size() * 60) / nbSecInFile);
@@ -265,7 +338,7 @@ public class FindBeats {
             probableS1Beats = events;
             float tresholdS1 = (ave + (treshFnd * max)) / (treshFnd + 1);
             moreBeatEvents = findNextBeatEvents(dataIn, tresholdS1);
-            noisyFile++ ;
+            noisyFile++;
 //            System.out.println("isRateAcceptable 0");
             return probableS1Beats;
         }
@@ -275,7 +348,7 @@ public class FindBeats {
         if ((un < deux) && (un > 0) && (deux > 0) && (preBeats.size() > 0)) {
             /*        
             * We probably rarely go through this branch
-            */
+             */
             normalizedData = dataIn;
             probableS1Beats = events;
             float tresholdS1 = (ave + (treshFnd * max)) / (treshFnd + 1);
@@ -289,16 +362,16 @@ public class FindBeats {
             if ((events.size() == preBeats.size()) && (events.size() == prepreBeats.size())) {
                 candidateBeats = events;
                 // C'est un break ?????????????
-        // Something wrong in isRateAcceptable
+                // Something wrong in isRateAcceptable
 //            System.out.println("isRateAcceptable 2");
-        return null;
+                return null;
             }
             prepreBeats = preBeats;
             preBeats = events;
         }
         candidateBeats = events;
 //            System.out.println("isRateAcceptable 3");
-            noisyFile++ ;
+        noisyFile++;
         return candidateBeats;
     }
 
@@ -318,14 +391,20 @@ public class FindBeats {
          */
 
         if (probableS1Beats.size() > 0) {
-            moreBeatEvents = betBeatSlice(dataIn, trshFnd, probableS1Beats.size() * 4);
+            moreBeatEvents = findNextSounds(dataIn, trshFnd, probableS1Beats.size() * 4);
         }
         return moreBeatEvents;
     }
 
     /**
      * This is for finding S1 events, it is independant of sampling rate and
-     * contains no prior knowledge about beat rate
+     * contains no prior knowledge about beat rate It applies a filter at 40Hz
+     * (upper beat frequency = 4Hz, max four events per beat, at least two
+     * sampling per event and filter out any 50/60Hz from power lines so 40Hz is
+     * fine
+     *
+     * Time Event 1 S1 2 3 Ec 4 5 6 7 8 S2 9 10 OS 11 12 13 S3 14 15 16 17 18 19
+     * S4 20
      *
      * @param dataIn
      * @param sampling_rate
@@ -337,6 +416,7 @@ public class FindBeats {
      */
     ArrayList calcBeatFind(
             float[] dataIn,
+            int smplRate,
             float earlyS1, float lateS1,
             float s2Shift,
             float treshFnd
@@ -370,7 +450,9 @@ public class FindBeats {
 
         idxGlobal = 1;
         while (idxGlobal < dataIn.length) {
-            lastAverage = lastWinAve(dataIn, idxGlobal, 30);
+            // It applies a filter at 40Hz (see above)
+            int winLength = smplRate / 40;
+            lastAverage = lastWinAve(dataIn, idxGlobal, winLength);
             if ((dataIn[idxGlobal] > tresholdS1) && (S1Flag == true)) {
                 if (lastAverage < tresholdS1) {
                     // We went through the tresholdS1 upward, while counting was forbidden
@@ -390,13 +472,13 @@ public class FindBeats {
                 }
                 // Is it possibly too early?
                 if (diff < earlyS1) {
-                    early++ ;
+                    early++;
                     idxGlobal++;
                     continue;
                 }
                 // Is it possibly too late?
                 if (diff > lateS1) {
-                    early-- ;
+                    early--;
                     tresholdS1 = (float) ((double) tresholdS1 * 0.85D);
                     if (un > 1) {
                         idxGlobal = ((Event) BeatS1Rate.get(un - 2)).timeStampValue().intValue();
@@ -412,7 +494,7 @@ public class FindBeats {
             }
             idxGlobal++;
         }
-        setShift(early) ;
+        setShift(early);
         return BeatS1Rate;
     }
 
@@ -533,7 +615,7 @@ public class FindBeats {
         return binary;
     }
 
-    private ArrayList betBeatSlice(float[] data, float treshold, int nbBeats) {
+    private ArrayList findNextSounds(float[] data, float treshold, int nbBeats) {
         // treshold is a value between the average value and the max value
         ArrayList binary = new ArrayList();
         float ave;
@@ -548,7 +630,7 @@ public class FindBeats {
                 ave = lastWinAve(data, idx, winWidth);
                 if (ave > treshold) {
                     binary.add(new Event(Integer.valueOf(idx), treshold, 0, 0));
-//                    System.out.println("betBeatSlice, idx= " + idx + ",    treshold= " + treshold);
+//                    System.out.println("findNextSounds, idx= " + idx + ",    treshold= " + treshold);
                 }
                 idx += 30;
             }
@@ -572,6 +654,7 @@ public class FindBeats {
      */
     void roughTreshFind(
             float[] dataIn,
+            int smplRate,
             float earlyS1, float lateS1,
             float s2Shift,
             float average,
@@ -585,14 +668,29 @@ public class FindBeats {
 
         do {
             RBF_treshhold = (float) (RBF_treshhold * 0.8);
-            events = calcBeatRough(dataIn, earlyS1, lateS1, s2Shift, RBF_treshhold, average, max);
+            events = calcBeatRough(dataIn, smplRate, earlyS1, lateS1, s2Shift, RBF_treshhold, average, max);
             beats = events.size();
             RBF_Beats = (int) ((beats * 60) / nbSecInFile);
         } while (((RBF_Beats < 50) || (RBF_Beats > 150)) && (RBF_treshhold > average));
     }
 
+    /**
+     * We apply a very low pass filter, in order to simplify our task/ However
+     * as a beat rate can go from 0.5Hz to 4Hz, the filter is at 10Hz/ So the
+     * size of the window is:"sample rate / 1"
+     *
+     * @param dataIn
+     * @param earlyS1
+     * @param lateS1
+     * @param s2Shift
+     * @param treshold
+     * @param ave
+     * @param max
+     * @return
+     */
     ArrayList calcBeatRough(
             float[] dataIn,
+            int smplRate,
             float earlyS1, float lateS1,
             float s2Shift,
             float treshold,
@@ -606,7 +704,8 @@ public class FindBeats {
 
         idxGlobal = 1;
         while (idxGlobal < dataIn.length) {
-            lastAverage = lastWinAve(dataIn, idxGlobal, 200);
+            // the filter is at 10Hz
+            lastAverage = lastWinAve(dataIn, idxGlobal, smplRate / 10);
 
             if ((dataIn[idxGlobal] < treshold) && (lastAverage < treshold)) {
                 // Both dataIn and lastAverage are below treshold
@@ -638,17 +737,26 @@ public class FindBeats {
         return BeatS1Rate;
     }
 
+    /**
+     * A Heuristic to mitigate noise
+     *
+     * @return
+     */
     public int getNoisyFile() {
-        float div = 4 * (moreBeatEvents.size() / probableS1Beats.size()) ;
-        return (int) ((4 * noisyFile) / div) ;
+        float div = 4 * (moreBeatEvents.size() / probableS1Beats.size());
+        return (int) ((4 * noisyFile) / div);
     }
-    
+
     public int getShift() {
-        return eventShift ;
+        return eventShift;
     }
-    
+
     public void setShift(int shift) {
-        eventShift = shift ;
+        eventShift = shift;
     }
-    
+
+    public float getTreshHold() {
+        return maxi / aver; // FIXME is 0
+    }
+
 }
